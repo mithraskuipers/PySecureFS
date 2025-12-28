@@ -261,6 +261,44 @@ UPLOAD_PAGE = """<!DOCTYPE html>
         small {{ color: #7f8c8d; }}
         hr {{ margin: 40px 0 20px 0; border: none; border-top: 1px solid #e0e6ed; }}
         .footer {{ margin-top: 30px; font-size: 0.85em; color: #95a5a6; }}
+
+        /* Progress bar styles */
+        #progressContainer {{ 
+            margin-top: 16px; 
+            display: none; 
+        }}
+        .progress-label {{
+            font-size: 0.9em;
+            color: #34495e;
+            margin-bottom: 6px;
+        }}
+        .progress-bar-wrapper {{
+            background: #ecf0f1;
+            border-radius: 999px;
+            overflow: hidden;
+            height: 14px;
+            box-shadow: inset 0 1px 2px rgba(0,0,0,0.08);
+        }}
+        .progress-bar-fill {{
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #2ecc71, #27ae60);
+            transition: width 0.15s ease-out;
+        }}
+        .progress-text {{
+            margin-top: 4px;
+            font-size: 0.85em;
+            color: #7f8c8d;
+        }}
+        .success-msg {{
+            color: #2e7d32;
+            background: #e8f5e9;
+            padding: 10px;
+            border-radius: 6px;
+            margin-top: 12px;
+            border-left: 4px solid #2e7d32;
+            display: none;
+        }}
     </style>
 </head>
 <body>
@@ -272,7 +310,15 @@ UPLOAD_PAGE = """<!DOCTYPE html>
             <input type="file" name="file" id="fileInput" required>
             <input type="submit" value="Upload File" id="submitBtn">
         </form>
+        <div id="progressContainer">
+            <div class="progress-label" id="progressLabel">Preparing upload…</div>
+            <div class="progress-bar-wrapper">
+                <div class="progress-bar-fill" id="progressBar"></div>
+            </div>
+            <div class="progress-text" id="progressText">0%</div>
+        </div>
         <div id="errorMsg" class="error-msg"></div>
+        <div id="successMsg" class="success-msg"></div>
     </div>
     <hr>
     <h2>📂 Available Files</h2>
@@ -287,18 +333,44 @@ UPLOAD_PAGE = """<!DOCTYPE html>
         const fileInput = document.getElementById('fileInput');
         const submitBtn = document.getElementById('submitBtn');
         const errorMsg = document.getElementById('errorMsg');
+        const successMsg = document.getElementById('successMsg');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressBar = document.getElementById('progressBar');
+        const progressText = document.getElementById('progressText');
+        const progressLabel = document.getElementById('progressLabel');
+
         const maxSizeMB = {max_upload_mb};
         const maxSizeBytes = maxSizeMB * 1024 * 1024;
+
         function showError(message) {{
             errorMsg.textContent = message;
             errorMsg.style.display = 'block';
+            successMsg.style.display = 'none';
             submitBtn.disabled = false;
+            submitBtn.value = "Upload File";
+            progressContainer.style.display = 'none';
         }}
+
+        function showSuccess(message) {{
+            successMsg.textContent = message;
+            successMsg.style.display = 'block';
+            errorMsg.style.display = 'none';
+        }}
+
         function clearError() {{
             errorMsg.style.display = 'none';
         }}
+
+        function resetProgress() {{
+            progressBar.style.width = '0%';
+            progressText.textContent = '0%';
+            progressLabel.textContent = 'Preparing upload…';
+        }}
+
         fileInput.addEventListener('change', function() {{
             clearError();
+            successMsg.style.display = 'none';
+            resetProgress();
             if (fileInput.files.length > 0) {{
                 const file = fileInput.files[0];
                 if (file.size > maxSizeBytes) {{
@@ -310,17 +382,65 @@ UPLOAD_PAGE = """<!DOCTYPE html>
                 }}
             }}
         }});
+
         form.addEventListener('submit', function(e) {{
-            if (fileInput.files.length === 0) return;
+            e.preventDefault();
+            clearError();
+            successMsg.style.display = 'none';
+
+            if (fileInput.files.length === 0) {{
+                showError("Please choose a file to upload.");
+                return;
+            }}
             const file = fileInput.files[0];
             if (file.size > maxSizeBytes) {{
-                e.preventDefault();
                 showError(`Upload blocked: File exceeds the ${{maxSizeMB}} MB limit.`);
-            }} else {{
-                submitBtn.disabled = true;
-                submitBtn.value = "Uploading...";
-                clearError();
+                return;
             }}
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', window.location.pathname || '/', true);
+
+            submitBtn.disabled = true;
+            submitBtn.value = "Uploading…";
+            progressContainer.style.display = 'block';
+            resetProgress();
+            progressLabel.textContent = `Uploading "${{file.name}}"…`;
+
+            xhr.upload.onprogress = function(event) {{
+                if (event.lengthComputable) {{
+                    const percent = Math.round((event.loaded / event.total) * 100);
+                    progressBar.style.width = percent + '%';
+                    progressText.textContent = percent + '%';
+                    if (percent === 100) {{
+                        progressLabel.textContent = 'Finalizing upload…';
+                    }}
+                }}
+            }};
+
+            xhr.onerror = function() {{
+                showError("Upload failed due to a network error.");
+            }};
+
+            xhr.onload = function() {{
+                if (xhr.status >= 200 && xhr.status < 300) {{
+                    progressBar.style.width = '100%';
+                    progressText.textContent = '100%';
+                    progressLabel.textContent = 'Upload complete';
+                    showSuccess('Upload complete. Reloading file list…');
+                    // After a short delay, reload the page so the new file appears
+                    setTimeout(function() {{
+                        window.location.reload();
+                    }}, 700);
+                }} else {{
+                    showError("Upload failed: " + xhr.status + " " + xhr.statusText);
+                }}
+            }};
+
+            xhr.send(formData);
         }});
     </script>
 </body>
@@ -570,9 +690,11 @@ class AuthHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                     uploaded = True
 
             if uploaded:
-                self.send_response(303)
-                self.send_header("Location", "/")
+                # For XHR uploads we send a simple OK JSON to avoid redirect
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
                 self.end_headers()
+                self.wfile.write(b'{"status":"ok"}')
             else:
                 self.send_error(400, "No file received")
 
