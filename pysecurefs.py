@@ -37,6 +37,7 @@ try:
     from cryptography.x509.oid import NameOID
     from cryptography.hazmat.primitives import hashes, serialization
     from cryptography.hazmat.primitives.asymmetric import rsa
+
     CRYPTOGRAPHY_AVAILABLE = True
 except Exception:
     CRYPTOGRAPHY_AVAILABLE = False
@@ -45,14 +46,14 @@ except Exception:
 SECURITY_CONFIG = {
     # Login / lockout
     "MAX_LOGIN_ATTEMPTS": 5,
-    "LOCKOUT_DURATION": 300,          # Seconds an IP is locked out
+    "LOCKOUT_DURATION": 300,  # Seconds an IP is locked out
 
     # Rate limiting
-    "RATE_LIMIT_WINDOW": 60,          # Seconds
+    "RATE_LIMIT_WINDOW": 60,  # Seconds
     "MAX_REQUESTS_PER_WINDOW": 20,
 
     # Sessions
-    "SESSION_DURATION": 3600,         # Seconds
+    "SESSION_DURATION": 3600,  # Seconds
 
     # Password hashing
     "PBKDF2_ITERATIONS": 100000,
@@ -149,8 +150,7 @@ def verify_password(stored_hash, provided_password):
 def is_rate_limited(ip_address):
     now = time.time()
     request_counts[ip_address] = [
-        ts for ts in request_counts[ip_address]
-        if now - ts < RATE_LIMIT_WINDOW
+        ts for ts in request_counts[ip_address] if now - ts < RATE_LIMIT_WINDOW
     ]
     if len(request_counts[ip_address]) >= MAX_REQUESTS_PER_WINDOW:
         return True
@@ -170,8 +170,7 @@ def is_locked_out(ip_address):
 def record_failed_login(ip_address):
     now = time.time()
     login_attempts[ip_address] = [
-        ts for ts in login_attempts[ip_address]
-        if now - ts < LOCKOUT_DURATION
+        ts for ts in login_attempts[ip_address] if now - ts < LOCKOUT_DURATION
     ]
     login_attempts[ip_address].append(now)
 
@@ -207,7 +206,9 @@ def validate_session(token):
 
 def cleanup_expired_sessions():
     now = time.time()
-    expired = [token for token, (_, expiry) in active_sessions.items() if now >= expiry]
+    expired = [
+        token for token, (_, expiry) in active_sessions.items() if now >= expiry
+    ]
     for token in expired:
         del active_sessions[token]
 
@@ -217,11 +218,15 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 console_handler = logging.StreamHandler()
-console_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
+console_handler.setFormatter(
+    logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+)
 logger.addHandler(console_handler)
 
 file_handler = logging.FileHandler(LOG_FILE, mode="a", encoding="utf-8")
-file_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
+file_handler.setFormatter(
+    logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+)
 logger.addHandler(file_handler)
 
 PORT = 8000
@@ -598,6 +603,7 @@ class ReusableTCPServer(socketserver.TCPServer):
     allow_reuse_address = True
 
     def server_bind(self):
+        # Bind to all interfaces so other machines on the LAN can reach it
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         super().server_bind()
 
@@ -693,6 +699,7 @@ def start_server(
         )
 
     try:
+        # Bind to all interfaces ("") so it's reachable from other machines
         httpd = ReusableTCPServer(("", port), handler)
 
         if enable_https:
@@ -708,6 +715,7 @@ def start_server(
                 raise FileNotFoundError("Missing TLS certificate or key file")
 
             context = ssl.SSLContext(SSL_PROTOCOL)
+            # Allow older TLS versions and weaker ciphers if necessary for LAN use
             context.load_cert_chain(certfile=cert_file, keyfile=key_file)
             httpd.socket = context.wrap_socket(httpd.socket, server_side=True)
             logger.info("HTTPS enabled using cert=%s key=%s", cert_file, key_file)
@@ -725,16 +733,18 @@ def start_server(
             if root and root.winfo_exists():
                 root.after(
                     0,
-                    lambda: (
+                    lambda msg=full_msg: (
                         status_label.config(
-                            text=full_msg,
+                            text=msg,
                             foreground="#d35400",
                         ),
                         start_btn.config(state="normal"),
                         root.after(
                             10000,
                             lambda: (
-                                status_label.config(text="Ready", foreground="#27ae60")
+                                status_label.config(
+                                    text="Ready", foreground="#27ae60"
+                                )
                                 if not server_running
                                 else None
                             ),
@@ -744,11 +754,12 @@ def start_server(
         else:
             logger.error("Network error: %s", e)
             if root and root.winfo_exists():
+                # FIX: capture e as default argument so it's available in lambda
                 root.after(
                     0,
-                    lambda: (
+                    lambda err=e: (
                         status_label.config(
-                            text=f"Network error: {e}",
+                            text=f"Network error: {err}",
                             foreground="red",
                         ),
                         start_btn.config(state="normal"),
@@ -759,8 +770,8 @@ def start_server(
         if root and root.winfo_exists():
             root.after(
                 0,
-                lambda: (
-                    status_label.config(text=f"Error: {e}", foreground="red"),
+                lambda err=e: (
+                    status_label.config(text=f"Error: {err}", foreground="red"),
                     start_btn.config(state="normal"),
                 ),
             )
@@ -794,15 +805,28 @@ def stop_server():
                 status_label.config(text="Server stopped", foreground="#e67e22"),
                 start_btn.config(state="normal"),
                 stop_btn.config(state="disabled"),
-                root.after(2000, lambda: status_label.config(text="Ready", foreground="#27ae60")),
+                root.after(
+                    2000,
+                    lambda: status_label.config(
+                        text="Ready", foreground="#27ae60"
+                    ),
+                ),
             ),
         )
 
 
 def remove_certificates():
     try:
-        cert_file = cert_file_var.get().strip() if 'cert_file_var' in globals() else HTTPS_CONFIG["CERT_FILE_DEFAULT"]
-        key_file = key_file_var.get().strip() if 'key_file_var' in globals() else HTTPS_CONFIG["KEY_FILE_DEFAULT"]
+        cert_file = (
+            cert_file_var.get().strip()
+            if "cert_file_var" in globals()
+            else HTTPS_CONFIG["CERT_FILE_DEFAULT"]
+        )
+        key_file = (
+            key_file_var.get().strip()
+            if "key_file_var" in globals()
+            else HTTPS_CONFIG["KEY_FILE_DEFAULT"]
+        )
 
         for path in (cert_file, key_file):
             if path and os.path.exists(path):
@@ -855,11 +879,15 @@ def copy_to_clipboard():
         pyperclip.copy(match.group())
         old = status_label.cget("text")
         status_label.config(text="✓ URL copied!", foreground="#2980b9")
-        root.after(1500, lambda: status_label.config(text=old, foreground="#27ae60"))
+        root.after(
+            1500, lambda: status_label.config(text=old, foreground="#27ae60")
+        )
 
 
 def toggle_upload_fields():
-    max_upload_entry.config(state="normal" if upload_enabled_var.get() else "disabled")
+    max_upload_entry.config(
+        state="normal" if upload_enabled_var.get() else "disabled"
+    )
 
 
 def toggle_auth_fields():
@@ -892,7 +920,9 @@ def generate_cert_from_gui():
         )
         return
 
-    cert_file = cert_file_var.get().strip() or HTTPS_CONFIG["CERT_FILE_DEFAULT"]
+    cert_file = (
+        cert_file_var.get().strip() or HTTPS_CONFIG["CERT_FILE_DEFAULT"]
+    )
     key_file = key_file_var.get().strip() or HTTPS_CONFIG["KEY_FILE_DEFAULT"]
     cert_file_var.set(cert_file)
     key_file_var.set(key_file)
@@ -943,8 +973,15 @@ def validate_inputs():
 def run_server():
     global server_thread
     if server_running:
-        status_label.config(text="Server is already running!", foreground="#e67e22")
-        root.after(2000, lambda: status_label.config(text="Ready", foreground="#27ae60"))
+        status_label.config(
+            text="Server is already running!", foreground="#e67e22"
+        )
+        root.after(
+            2000,
+            lambda: status_label.config(
+                text="Ready", foreground="#27ae60"
+            ),
+        )
         return
     if not validate_inputs():
         return
@@ -979,21 +1016,35 @@ def run_server():
 def check_server_started():
     if server_running:
         auth = " 🔒 Protected" if auth_enabled_var.get() else ""
-        up = f" | 📤 Max {max_upload_var.get()}MB" if upload_enabled_var.get() else " | 📤 Off"
+        up = (
+            f" | 📤 Max {max_upload_var.get()}MB"
+            if upload_enabled_var.get()
+            else " | 📤 Off"
+        )
         scheme = "https" if https_enabled_var.get() else "http"
-        url = f"Server running on {scheme}://{get_local_ip()}:{port_var.get()}{auth}{up}"
+        # Use LAN IP so other machines can connect (especially for HTTPS)
+        url = (
+            f"Server running on {scheme}://{get_lan_ip()}:{port_var.get()}"
+            f"{auth}{up}"
+        )
         status_label.config(text=url, foreground="#27ae60")
         stop_btn.config(state="normal")
     else:
         root.after(500, check_server_started)
 
 
-def get_local_ip():
+def get_lan_ip():
+    """
+    Try to get a LAN-reachable IP instead of 127.0.0.1,
+    so that the printed URL works from other machines on the same network.
+    """
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
+        # Doesn't need to be reachable; just used to pick the right interface
         s.connect(("8.8.8.8", 80))
         return s.getsockname()[0]
     except Exception:
+        # Fallback to localhost
         return "127.0.0.1"
     finally:
         s.close()
@@ -1106,11 +1157,14 @@ Label(
     font=("Segoe UI", 8),
 ).grid(row=0, column=0, sticky="w")
 
+
 def open_github():
     webbrowser.open(APP_GITHUB_URL)
 
+
 def open_linkedin():
     webbrowser.open(APP_LINKEDIN_URL)
+
 
 github_label = Label(
     credit_frame,
@@ -1144,7 +1198,9 @@ Label(main, text="Folder:", font=("Segoe UI", 9, "bold")).grid(
 )
 folder_entry = ttk.Entry(main, textvariable=folder_var, width=38)
 folder_entry.grid(row=2, column=1, sticky="ew", padx=(6, 4))
-ttk.Button(main, text="Browse…", command=browse_folder).grid(row=2, column=2, padx=(0, 0))
+ttk.Button(main, text="Browse…", command=browse_folder).grid(
+    row=2, column=2, padx=(0, 0)
+)
 
 Label(main, text="Port:", font=("Segoe UI", 9, "bold")).grid(
     row=3, column=0, sticky="w", pady=(8, 0)
@@ -1176,9 +1232,13 @@ Label(auth_frame, text="Username:").grid(row=1, column=0, sticky="w")
 username_entry = ttk.Entry(auth_frame, textvariable=username_var)
 username_entry.grid(row=1, column=1, sticky="ew", padx=(4, 0))
 
-Label(auth_frame, text="Password:").grid(row=2, column=0, sticky="w", pady=(4, 0))
+Label(auth_frame, text="Password:").grid(
+    row=2, column=0, sticky="w", pady=(4, 0)
+)
 password_entry = ttk.Entry(auth_frame, textvariable=password_var, show="●")
-password_entry.grid(row=2, column=1, sticky="ew", padx=(4, 0), pady=(4, 0))
+password_entry.grid(
+    row=2, column=1, sticky="ew", padx=(4, 0), pady=(4, 0)
+)
 
 https_frame = ttk.LabelFrame(options_frame, text=" HTTPS / TLS ")
 https_frame.grid(row=0, column=1, sticky="ew", padx=(6, 0))
@@ -1195,9 +1255,13 @@ Label(https_frame, text="Cert file:").grid(row=1, column=0, sticky="w")
 cert_entry = ttk.Entry(https_frame, textvariable=cert_file_var)
 cert_entry.grid(row=1, column=1, sticky="ew", padx=(4, 0))
 
-Label(https_frame, text="Key file:").grid(row=2, column=0, sticky="w", pady=(4, 0))
+Label(https_frame, text="Key file:").grid(
+    row=2, column=0, sticky="w", pady=(4, 0)
+)
 key_entry = ttk.Entry(https_frame, textvariable=key_file_var)
-key_entry.grid(row=2, column=1, sticky="ew", padx=(4, 0), pady=(4, 0))
+key_entry.grid(
+    row=2, column=1, sticky="ew", padx=(4, 0), pady=(4, 0)
+)
 
 gen_cert_btn = ttk.Button(
     https_frame,
@@ -1208,7 +1272,9 @@ gen_cert_btn.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(6, 0))
 
 # Row 5: Upload settings
 upload_frame = ttk.LabelFrame(main, text=" File Upload ")
-upload_frame.grid(row=5, column=0, columnspan=3, sticky="ew", pady=(10, 0))
+upload_frame.grid(
+    row=5, column=0, columnspan=3, sticky="ew", pady=(10, 0)
+)
 upload_frame.columnconfigure(1, weight=1)
 
 Checkbutton(
@@ -1218,9 +1284,13 @@ Checkbutton(
     command=toggle_upload_fields,
 ).grid(row=0, column=0, columnspan=2, sticky="w")
 
-Label(upload_frame, text="Max size (MB):").grid(row=1, column=0, sticky="w", pady=(4, 0))
+Label(upload_frame, text="Max size (MB):").grid(
+    row=1, column=0, sticky="w", pady=(4, 0)
+)
 max_upload_entry = ttk.Entry(upload_frame, textvariable=max_upload_var, width=10)
-max_upload_entry.grid(row=1, column=1, sticky="w", padx=(4, 0), pady=(4, 0))
+max_upload_entry.grid(
+    row=1, column=1, sticky="w", padx=(4, 0), pady=(4, 0)
+)
 
 toggle_auth_fields()
 toggle_upload_fields()
@@ -1236,7 +1306,9 @@ btn_frame.columnconfigure(2, weight=0)
 start_btn = ttk.Button(btn_frame, text="▶ Start server", command=run_server)
 start_btn.grid(row=0, column=0, sticky="ew", padx=(0, 4))
 
-stop_btn = ttk.Button(btn_frame, text="⏹ Stop server", command=stop_server, state="disabled")
+stop_btn = ttk.Button(
+    btn_frame, text="⏹ Stop server", command=stop_server, state="disabled"
+)
 stop_btn.grid(row=0, column=1, sticky="ew", padx=(4, 4))
 
 log_btn = ttk.Button(btn_frame, text="📜 View log", command=show_log_window)
@@ -1256,7 +1328,9 @@ status_label.bind("<Button-1>", lambda e: copy_to_clipboard())
 
 # Attach TkTextHandler AFTER root and log_window functions exist
 text_handler = TkTextHandler(get_log_text_widget)
-text_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
+text_handler.setFormatter(
+    logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+)
 logger.addHandler(text_handler)
 
 root.protocol("WM_DELETE_WINDOW", on_closing)
