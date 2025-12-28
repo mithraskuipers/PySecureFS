@@ -264,7 +264,7 @@ UPLOAD_PAGE = """<!DOCTYPE html>
     </style>
 </head>
 <body>
-    <h1>Python File Server</h1>
+    <h1>PySecureFS</h1>
     <div id="uploadSection" class="upload-section {upload_class}">
         <h2>📁 Upload a File</h2>
         <div class="info-msg">Maximum allowed file size: <strong>{max_upload_mb} MB</strong></div>
