@@ -19,8 +19,9 @@ import hmac
 import secrets
 import ssl
 from collections import defaultdict
-from datetime import datetime, timedelta  # used for cert validity
+from datetime import datetime, timedelta
 import webbrowser
+from urllib.parse import unquote
 
 # === Metadata / Credits ===
 APP_NAME = "PySecureFS"
@@ -229,7 +230,7 @@ file_handler.setFormatter(
 )
 logger.addHandler(file_handler)
 
-PORT = 8000
+PORT = 80
 server_thread = None
 httpd = None
 server_running = False
@@ -246,6 +247,10 @@ UPLOAD_PAGE = """<!DOCTYPE html>
         body {{ font-family: Arial, sans-serif; max-width: 900px; margin: 40px auto; padding: 20px; background: #f5f7fa; }}
         h1 {{ color: #2c3e50; }}
         h2 {{ color: #34495e; margin-bottom: 20px; }}
+        .breadcrumb {{ background: #ffffff; padding: 15px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 1px 5px rgba(0,0,0,0.04); }}
+        .breadcrumb a {{ color: #2980b9; text-decoration: none; font-weight: bold; }}
+        .breadcrumb a:hover {{ text-decoration: underline; }}
+        .breadcrumb span {{ color: #7f8c8d; margin: 0 8px; }}
         .upload-section {{ background: #ffffff; padding: 25px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.06); margin-bottom: 40px; }}
         .hidden {{ display: none; }}
         .info-msg {{ color: #1976d2; font-size: 0.95em; margin: 10px 0 20px 0; }}
@@ -256,8 +261,10 @@ UPLOAD_PAGE = """<!DOCTYPE html>
         .error-msg {{ color: #c0392b; background: #fdecea; padding: 12px; border-radius: 6px; margin: 15px 0; display: none; border-left: 4px solid #c0392b; }}
         ul {{ list-style-type: none; padding: 0; }}
         li {{ padding: 12px; margin: 8px 0; background: #ffffff; border-radius: 8px; box-shadow: 0 1px 5px rgba(0,0,0,0.04); display: flex; justify-content: space-between; align-items: center; }}
+        li.directory {{ background: #e8f4f8; }}
         a {{ color: #2980b9; text-decoration: none; font-weight: bold; }}
         a:hover {{ text-decoration: underline; }}
+        a.directory {{ color: #16a085; }}
         small {{ color: #7f8c8d; }}
         hr {{ margin: 40px 0 20px 0; border: none; border-top: 1px solid #e0e6ed; }}
         .footer {{ margin-top: 30px; font-size: 0.85em; color: #95a5a6; }}
@@ -303,6 +310,11 @@ UPLOAD_PAGE = """<!DOCTYPE html>
 </head>
 <body>
     <h1>PySecureFS</h1>
+    
+    <div class="breadcrumb">
+        {breadcrumb}
+    </div>
+
     <div id="uploadSection" class="upload-section {upload_class}">
         <h2>📁 Upload a File</h2>
         <div class="info-msg">Maximum allowed file size: <strong>{max_upload_mb} MB</strong></div>
@@ -321,7 +333,7 @@ UPLOAD_PAGE = """<!DOCTYPE html>
         <div id="successMsg" class="success-msg"></div>
     </div>
     <hr>
-    <h2>📂 Available Files</h2>
+    <h2>📂 Contents</h2>
     <ul>
         {file_list}
     </ul>
@@ -431,7 +443,6 @@ UPLOAD_PAGE = """<!DOCTYPE html>
                     progressText.textContent = '100%';
                     progressLabel.textContent = 'Upload complete';
                     showSuccess('Upload complete. Reloading file list…');
-                    // After a short delay, reload the page so the new file appears
                     setTimeout(function() {{
                         window.location.reload();
                     }}, 700);
@@ -586,28 +597,78 @@ class AuthHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.send_auth_headers()
             return
 
-        if self.path == "/":
+        # Decode and normalize the path
+        path = unquote(self.path)
+        
+        # Remove query string if present
+        if '?' in path:
+            path = path.split('?')[0]
+        
+        # Construct the full file system path
+        if path == "/":
+            full_path = self.custom_directory
+            relative_path = ""
+        else:
+            # Remove leading slash and construct path
+            relative_path = path.lstrip("/")
+            full_path = os.path.join(self.custom_directory, relative_path)
+        
+        # Security check: ensure path is within custom_directory
+        full_path = os.path.abspath(full_path)
+        base_path = os.path.abspath(self.custom_directory)
+        
+        if not full_path.startswith(base_path):
+            self.send_error(403, "Access denied")
+            return
+        
+        # Check if it's a directory
+        if os.path.isdir(full_path):
             try:
-                folder = self.custom_directory
-                files = [
-                    f
-                    for f in os.listdir(folder)
-                    if not f.startswith(".")
-                    and os.path.isfile(os.path.join(folder, f))
-                ]
-                files.sort()
-
-                file_list = "".join(
-                    f"<li><span>📄 <a href='/{f}'>{f}</a></span> "
-                    f"<small>{self._get_file_size(os.path.join(folder, f))}</small></li>"
-                    for f in files
-                )
-
-                if not file_list:
-                    file_list = "<li><em>No files available yet.</em></li>"
+                # Build breadcrumb navigation
+                breadcrumb_parts = ["<a href='/'>🏠 Home</a>"]
+                if relative_path:
+                    path_parts = relative_path.split("/")
+                    accumulated_path = ""
+                    for part in path_parts:
+                        if part:
+                            accumulated_path += "/" + part
+                            breadcrumb_parts.append(
+                                f"<span>/</span><a href='{accumulated_path}'>{part}</a>"
+                            )
+                breadcrumb = " ".join(breadcrumb_parts)
+                
+                # List directory contents
+                items = []
+                try:
+                    entries = os.listdir(full_path)
+                    entries.sort(key=lambda x: (not os.path.isdir(os.path.join(full_path, x)), x.lower()))
+                    
+                    for entry in entries:
+                        if entry.startswith("."):
+                            continue
+                        
+                        entry_path = os.path.join(full_path, entry)
+                        url_path = "/" + os.path.join(relative_path, entry).replace("\\", "/")
+                        
+                        if os.path.isdir(entry_path):
+                            items.append(
+                                f'<li class="directory"><span>📁 <a href="{url_path}" class="directory">{entry}/</a></span> '
+                                f'<small>Directory</small></li>'
+                            )
+                        else:
+                            size = self._get_file_size(entry_path)
+                            items.append(
+                                f'<li><span>📄 <a href="{url_path}">{entry}</a></span> '
+                                f'<small>{size}</small></li>'
+                            )
+                except PermissionError:
+                    items.append("<li><em>Permission denied</em></li>")
+                
+                file_list = "".join(items) if items else "<li><em>No files or folders available.</em></li>"
 
                 upload_class = "" if self.upload_enabled else "hidden"
                 page = UPLOAD_PAGE.format(
+                    breadcrumb=breadcrumb,
                     file_list=file_list,
                     upload_class=upload_class,
                     max_upload_mb=self.max_upload_mb,
@@ -621,9 +682,10 @@ class AuthHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(page)
             except Exception as e:
-                logger.error("Error generating page: %s", e)
+                logger.error("Error generating directory listing: %s", e)
                 self.send_error(500, f"Internal Server Error: {str(e)}")
         else:
+            # It's a file, serve it normally
             super().do_GET()
 
     def do_POST(self):
@@ -656,6 +718,30 @@ class AuthHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             parts = data.split(b"--" + boundary)
             uploaded = False
 
+            # Determine upload directory based on current path
+            path = unquote(self.path)
+            if '?' in path:
+                path = path.split('?')[0]
+            
+            if path == "/":
+                upload_dir = self.custom_directory
+            else:
+                relative_path = path.lstrip("/")
+                upload_dir = os.path.join(self.custom_directory, relative_path)
+            
+            # Security check
+            upload_dir = os.path.abspath(upload_dir)
+            base_path = os.path.abspath(self.custom_directory)
+            
+            if not upload_dir.startswith(base_path):
+                self.send_error(403, "Access denied")
+                return
+            
+            # Ensure upload directory exists
+            if not os.path.isdir(upload_dir):
+                self.send_error(400, "Invalid upload directory")
+                return
+
             for part in parts:
                 if b'filename="' in part:
                     try:
@@ -673,24 +759,23 @@ class AuthHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                         self.send_error(400, "Invalid filename")
                         return
 
-                    filepath = os.path.join(self.custom_directory, filename)
+                    filepath = os.path.join(upload_dir, filename)
 
                     if os.path.exists(filepath):
                         base, ext = os.path.splitext(filename)
                         i = 1
                         while os.path.exists(filepath):
                             filename = f"{base}_{i}{ext}"
-                            filepath = os.path.join(self.custom_directory, filename)
+                            filepath = os.path.join(upload_dir, filename)
                             i += 1
 
                     with open(filepath, "wb") as f:
                         f.write(body)
 
-                    logger.info("Uploaded: %s (%s bytes)", filename, len(body))
+                    logger.info("Uploaded: %s (%s bytes) to %s", filename, len(body), upload_dir)
                     uploaded = True
 
             if uploaded:
-                # For XHR uploads we send a simple OK JSON to avoid redirect
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.end_headers()
@@ -962,8 +1047,9 @@ def remove_certificates():
 
 
 def remove_log_file():
+    """Always remove the log file on exit"""
     try:
-        if LOG_FILE and os.path.exists(LOG_FILE):
+        if os.path.exists(LOG_FILE):
             os.remove(LOG_FILE)
             print(f"Removed log file: {LOG_FILE}")
     except Exception as e:

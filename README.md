@@ -14,7 +14,7 @@
 
 ### Screenshot
 
-![PySecureFS Screenshot](pysecurefs.png)  
+![PySecureFS Screenshot](screenshot.png)  
 
 ## Features
 
