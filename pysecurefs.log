@@ -1,0 +1,8 @@
+2026-01-02 23:09:30,644 - INFO - Server successfully started on port 80
+2026-01-02 23:09:42,777 - INFO - 192.168.2.15 - "GET / HTTP/1.1" 200 -
+2026-01-02 23:09:42,991 - INFO - 192.168.2.15 - code 404, message File not found
+2026-01-02 23:09:42,991 - INFO - 192.168.2.15 - "GET /favicon.ico HTTP/1.1" 404 -
+2026-01-02 23:09:48,423 - INFO - 192.168.2.15 - "GET /haruneko HTTP/1.1" 200 -
+2026-01-02 23:09:50,306 - INFO - 192.168.2.15 - "GET /haruneko/Sailor%20Moon%20(upscaled) HTTP/1.1" 200 -
+2026-01-02 23:09:51,657 - INFO - 192.168.2.15 - "GET /haruneko/Sailor%20Moon%20(upscaled)/Act%201.zip HTTP/1.1" 200 -
+2026-01-02 23:11:47,890 - INFO - 192.168.2.15 - "GET /haruneko/Sailor%20Moon%20(upscaled)/Act%202.zip HTTP/1.1" 200 -
