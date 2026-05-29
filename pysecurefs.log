@@ -6,3 +6,16 @@
 2026-01-02 23:09:50,306 - INFO - 192.168.2.15 - "GET /haruneko/Sailor%20Moon%20(upscaled) HTTP/1.1" 200 -
 2026-01-02 23:09:51,657 - INFO - 192.168.2.15 - "GET /haruneko/Sailor%20Moon%20(upscaled)/Act%201.zip HTTP/1.1" 200 -
 2026-01-02 23:11:47,890 - INFO - 192.168.2.15 - "GET /haruneko/Sailor%20Moon%20(upscaled)/Act%202.zip HTTP/1.1" 200 -
+2026-04-08 10:45:03,907 - INFO - Server successfully started on port 8000
+2026-04-08 10:46:00,711 - INFO - Stopping server...
+2026-04-08 10:46:04,462 - ERROR - HTTPS enabled but certificate or key file not found: server.crt, server.key
+2026-04-08 10:46:04,463 - ERROR - Network error: Missing TLS certificate or key file
+2026-04-08 10:46:09,397 - ERROR - HTTPS enabled but certificate or key file not found: server.crt, server.key
+2026-04-08 10:46:09,397 - ERROR - Network error: Missing TLS certificate or key file
+2026-04-08 10:46:16,672 - ERROR - HTTPS enabled but certificate or key file not found: server.crt, server.key
+2026-04-08 10:46:16,673 - ERROR - Network error: Missing TLS certificate or key file
+2026-04-08 10:46:56,883 - ERROR - HTTPS enabled but certificate or key file not found: server.crt, server.key
+2026-04-08 10:46:56,883 - ERROR - Network error: Missing TLS certificate or key file
+2026-04-08 10:46:58,954 - INFO - Self-signed certificate created: server.crt, server.key
+2026-04-08 10:47:00,670 - INFO - HTTPS enabled using cert=server.crt key=server.key
+2026-04-08 10:47:00,671 - INFO - Server successfully started on port 8000
